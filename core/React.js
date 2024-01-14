@@ -1,19 +1,3 @@
-// v1
-// const dom = document.createElement('div')
-// dom.id = 'app'
-// document.querySelector("#root").append(dom)
-
-
-// const textNode = document.createTextNode("")
-// textNode.nodeValue = "app"
-// dom.append(textNode)
-
-// v2 react -> vdom ->js object
-// 1. 一个dom所要考虑的点是，它有哪些属性
-// - 标签type
-// - props -> 属性
-// - 子节点
-
 function createTextNode(text) {
   return {
     type: "TEXT_ELEMENT",
@@ -25,7 +9,6 @@ function createTextNode(text) {
 }
 
 function createElement(type, props, ...children) {
-  console.log("自带的createElement被调用")
   return {
     type,
     props: {
@@ -35,19 +18,102 @@ function createElement(type, props, ...children) {
   }
 }
 
+/**
+ * 
+ * @param {*} el 
+ * @param {*} container 父级容器 
+ * 函数的主入口
+ */
 function render(el, container) {
-  const dom = el.type === "TEXT_ELEMENT" ? document.createTextNode("") : document.createElement(el.type)
+  nextWorkOfUnit = {
+    dom: container,
+    props: {
+      children: [el]
+    }
+  }
+}
 
-  Object.keys(el.props).forEach(key => {
+/**
+ * 问题：DOM特别大，导致渲染卡顿
+ * 解决思路：把大任务拆分到多个task里完成
+ * 实现：采用requestIdleCallback分帧计算
+ * @param {*} deadline 
+ */
+let nextWorkOfUnit = null // 当前的任务
+function workLoop(deadline) {
+  let shouldYield = false
+  while (!shouldYield && nextWorkOfUnit) {
+    nextWorkOfUnit = preformWorkOfUnit(nextWorkOfUnit) // 返回下一个任务
+    shouldYield = deadline.timeRemaining() < 1
+  }
+  // requestIdleCallback(workLoop)
+}
+
+function createDom(type) {
+  return type === "TEXT_ELEMENT" ? document.createTextNode("") : document.createElement(type)
+}
+
+function updateProps(dom, props) {
+  Object.keys(props).forEach(key => {
     if (key !== "children") {
-      dom[key] = el.props[key]
+      dom[key] = props[key]
     }
   })
-
-  const children = el.props.children
-  children.forEach(child => render(child, dom))
-  container.append(dom)
 }
+
+function initChildren(fiber) {
+  const children = fiber.props.children
+  let prevChild = null
+  children.forEach((child, index) => {
+    // !! 后续需要找叔叔节点或者父亲节点，可以把属性在加child中，但是这样子是不合理的，会破坏我们原来的dom结构
+    // 所以构造了一个当前节点
+    const newFiber = {
+      type: child.type,
+      props: child.props,
+      child: null,
+      parent: fiber,
+      sibling: null,
+      dom: null
+    }
+
+    if (index === 0) {
+      fiber.child = newFiber
+    } else {
+      prevChild.sibling = newFiber // 赋值兄弟节点
+    }
+    prevChild = newFiber // 更新上一个节点
+  })
+}
+/**
+ * 
+ * @param {*} fiber  // 当前任务
+ * @return {nextWorkOfUnit} //下一个要执行的work ==> dom 结构
+ */
+function preformWorkOfUnit(fiber) {
+  // 这里主要处理非首次渲染，因为首次渲染有一个根Dom
+  if (!fiber.dom) {
+    // 1. 创建dom // !创建了一个真实DOM
+    const dom = fiber.dom = createDom(fiber.type)
+    // 把dom 放置到父级容器中
+    fiber.parent.dom.append(dom)
+    // 2. 处理props 
+    updateProps(dom, fiber.props)
+  }
+
+  // 3. 转换链表，建立关系，设置好指针
+  initChildren(fiber)
+
+  // 4. 返回下一个要执行的任务
+  if (fiber.child) {
+    return fiber.child
+  }
+  if (fiber.sibling) {
+    return fiber.sibling
+  }
+  return fiber.parent?.sibling
+}
+
+requestIdleCallback(workLoop)
 
 const React = {
   render,
