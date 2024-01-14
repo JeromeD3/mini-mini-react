@@ -25,6 +25,7 @@ function createTextNode(text) {
 }
 
 function createElement(type, props, ...children) {
+  console.log("自带的createElement被调用")
   return {
     type,
     props: {
