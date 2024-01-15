@@ -31,6 +31,7 @@ function render(el, container) {
       children: [el]
     }
   }
+  root = nextWorkOfUnit
 }
 
 /**
@@ -39,6 +40,7 @@ function render(el, container) {
  * 实现：采用requestIdleCallback分帧计算
  * @param {*} deadline 
  */
+let root = null
 let nextWorkOfUnit = null // 当前的任务
 function workLoop(deadline) {
   let shouldYield = false
@@ -46,9 +48,25 @@ function workLoop(deadline) {
     nextWorkOfUnit = preformWorkOfUnit(nextWorkOfUnit) // 返回下一个任务
     shouldYield = deadline.timeRemaining() < 1
   }
-  // requestIdleCallback(workLoop)
+  // 下个任务没有值，就代表链表已经处理完了
+  if (!nextWorkOfUnit && root) {
+    commitRoot()
+  }
+  requestIdleCallback(workLoop)
 }
 
+function commitRoot() {
+  // console.log(root)
+  commitWork(root.child)
+  root = null
+}
+
+function commitWork(fiber) {
+  if (!fiber) return
+  fiber.parent.dom.append(fiber.dom)
+  commitWork(fiber.child)
+  commitWork(fiber.sibling)
+}
 function createDom(type) {
   return type === "TEXT_ELEMENT" ? document.createTextNode("") : document.createElement(type)
 }
@@ -94,8 +112,6 @@ function preformWorkOfUnit(fiber) {
   if (!fiber.dom) {
     // 1. 创建dom // !创建了一个真实DOM
     const dom = fiber.dom = createDom(fiber.type)
-    // 把dom 放置到父级容器中
-    fiber.parent.dom.append(dom)
     // 2. 处理props 
     updateProps(dom, fiber.props)
   }
