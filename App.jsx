@@ -1,5 +1,20 @@
 import React from './core/React.js'
-const App = <div>test</div>
+
+function Counter({ num }) {
+  return <div>x2xx:{num}</div>
+}
+function Counter2({ num }) {
+  return (
+    <div>
+      <Counter num={num} />
+      <Counter num={num} />
+    </div>
+  )
+}
+
+function App() {
+  return <Counter2 num={10} />
+}
 
 // React.createElement("div", {
 //   id: "app"

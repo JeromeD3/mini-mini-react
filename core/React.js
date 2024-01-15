@@ -13,7 +13,10 @@ function createElement(type, props, ...children) {
     type,
     props: {
       ...props,
-      children: children.map(child => typeof child === 'string' ? createTextNode(child) : child)
+      children: children.map(child => {
+        const isTextNode = typeof child === 'string' || typeof child === 'number'
+        return isTextNode ? createTextNode(child) : child
+      })
     }
   }
 }
@@ -45,7 +48,7 @@ let nextWorkOfUnit = null // 当前的任务
 function workLoop(deadline) {
   let shouldYield = false
   while (!shouldYield && nextWorkOfUnit) {
-    nextWorkOfUnit = preformWorkOfUnit(nextWorkOfUnit) // 返回下一个任务
+    nextWorkOfUnit = performWorkOfUnit(nextWorkOfUnit) // 返回下一个任务
     shouldYield = deadline.timeRemaining() < 1
   }
   // 下个任务没有值，就代表链表已经处理完了
@@ -63,7 +66,15 @@ function commitRoot() {
 
 function commitWork(fiber) {
   if (!fiber) return
-  fiber.parent.dom.append(fiber.dom)
+  let fiberParent = fiber.parent
+
+  while (!fiberParent.dom) {
+    fiberParent = fiberParent.parent
+  }
+
+  if (fiber.dom) {
+    fiberParent.dom.append(fiber.dom)
+  }
   commitWork(fiber.child)
   commitWork(fiber.sibling)
 }
@@ -79,8 +90,7 @@ function updateProps(dom, props) {
   })
 }
 
-function initChildren(fiber) {
-  const children = fiber.props.children
+function initChildren(fiber, children) {
   let prevChild = null
   children.forEach((child, index) => {
     // !! 后续需要找叔叔节点或者父亲节点，可以把属性在加child中，但是这样子是不合理的，会破坏我们原来的dom结构
@@ -102,13 +112,15 @@ function initChildren(fiber) {
     prevChild = newFiber // 更新上一个节点
   })
 }
-/**
- * 
- * @param {*} fiber  // 当前任务
- * @return {nextWorkOfUnit} //下一个要执行的work ==> dom 结构
- */
-function preformWorkOfUnit(fiber) {
-  // 这里主要处理非首次渲染，因为首次渲染有一个根Dom
+
+function updateFunctionComponent(fiber) {
+  const children = [fiber.type(fiber.props)]
+
+  // 3. 转换链表，建立关系，设置好指针
+  initChildren(fiber, children)
+}
+
+function updateHostComponent(fiber) {
   if (!fiber.dom) {
     // 1. 创建dom // !创建了一个真实DOM
     const dom = fiber.dom = createDom(fiber.type)
@@ -116,8 +128,22 @@ function preformWorkOfUnit(fiber) {
     updateProps(dom, fiber.props)
   }
 
-  // 3. 转换链表，建立关系，设置好指针
-  initChildren(fiber)
+  const children = fiber.props.children
+  initChildren(fiber, children)
+}
+/**
+ * 
+ * @param {*} fiber  // 当前任务
+ * @return {nextWorkOfUnit} //下一个要执行的work ==> dom 结构
+ */
+function performWorkOfUnit(fiber) {
+  const isFunctionComponent = typeof fiber.type === 'function'
+
+  if (isFunctionComponent) {
+    updateFunctionComponent(fiber)
+  } else {
+    updateHostComponent(fiber)
+  }
 
   // 4. 返回下一个要执行的任务
   if (fiber.child) {
@@ -126,7 +152,14 @@ function preformWorkOfUnit(fiber) {
   if (fiber.sibling) {
     return fiber.sibling
   }
-  return fiber.parent?.sibling
+
+  let nextFiber = fiber
+  while (nextFiber) {
+    if (nextFiber.parent && nextFiber.sibling) {
+      return nextFiber.sibling
+    }
+    nextFiber = nextFiber.parent
+  }
 }
 
 requestIdleCallback(workLoop)
