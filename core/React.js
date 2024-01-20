@@ -46,10 +46,16 @@ function render(el, container) {
 let wipRoot = null
 let currentRoot = null
 let nextWorkOfUnit = null // 当前的任务
+let deltetions = []
+let wipFiber = null
 function workLoop(deadline) {
   let shouldYield = false
   while (!shouldYield && nextWorkOfUnit) {
     nextWorkOfUnit = performWorkOfUnit(nextWorkOfUnit) // 返回下一个任务
+
+    if (wipRoot?.sibling?.type === nextWorkOfUnit?.type) {
+      nextWorkOfUnit = undefined
+    }
     shouldYield = deadline.timeRemaining() < 1
   }
   // 下个任务没有值，就代表链表已经处理完了
@@ -60,12 +66,26 @@ function workLoop(deadline) {
 }
 
 function commitRoot() {
-  // console.log(wipRoot)
+  deltetions.forEach(commitDeletion)
   commitWork(wipRoot.child)
   currentRoot = wipRoot
   wipRoot = null
+  deltetions = []
 }
 
+function commitDeletion(fiber) {
+  if (fiber.dom) {
+    let fiberParent = fiber.parent
+
+    while (!fiberParent.dom) {
+      fiberParent = fiberParent.parent
+    }
+
+    fiberParent.dom.removeChild(fiber.dom)
+  } else {
+    commitDeletion(fiber.child)
+  }
+}
 function commitWork(fiber) {
   if (!fiber) return
   let fiberParent = fiber.parent
@@ -123,6 +143,7 @@ function updateProps(dom, nextProps, prevProps) {
 function reconcileChildren(fiber, children) {
   let oldFiber = fiber.alternate?.child
   let prevChild = null
+
   children.forEach((child, index) => {
     const isSameType = oldFiber && oldFiber.type === child.type
 
@@ -140,34 +161,50 @@ function reconcileChildren(fiber, children) {
       }
       // update
     } else {
-      newFiber = {
-        type: child.type,
-        props: child.props,
-        child: null,
-        parent: fiber,
-        sibling: null,
-        dom: null,
-        effectTag: 'placement',
+      if (child) {
+        newFiber = {
+          type: child.type,
+          props: child.props,
+          child: null,
+          parent: fiber,
+          sibling: null,
+          dom: null,
+          effectTag: 'placement',
+        }
+      }
+
+      if (oldFiber) {
+        deltetions.push(oldFiber)
       }
     }
 
-    if (oldFiber){
+    if (oldFiber) {
       oldFiber = oldFiber.sibling
     }
-      // !! 后续需要找叔叔节点或者父亲节点，可以把属性在加child中，但是这样子是不合理的，会破坏我们原来的dom结构
-      // 所以构造了一个当前节点
-      if (index === 0) {
-        fiber.child = newFiber
-      } else {
-        prevChild.sibling = newFiber // 赋值兄弟节点
-      }
-    prevChild = newFiber // 更新上一个节点
+    // !! 后续需要找叔叔节点或者父亲节点，可以把属性在加child中，但是这样子是不合理的，会破坏我们原来的dom结构
+
+    // 所以构造了一个当前节点
+    if (index === 0) {
+      fiber.child = newFiber
+    } else {
+      prevChild.sibling = newFiber // 赋值兄弟节点
+    }
+    if (newFiber) {
+      prevChild = newFiber // 更新上一个节点
+    }
+
   })
+
+  while (oldFiber) {
+    deltetions.push(oldFiber)
+    oldFiber = oldFiber.sibling
+  }
 }
 
 function updateFunctionComponent(fiber) {
+  wipFiber
+    = fiber
   const children = [fiber.type(fiber.props)]
-
   // 3. 转换链表，建立关系，设置好指针
   reconcileChildren(fiber, children)
 }
@@ -217,13 +254,17 @@ function performWorkOfUnit(fiber) {
 requestIdleCallback(workLoop)
 
 function update() {
-  wipRoot = {
-    dom: currentRoot.dom,
-    props: currentRoot.props,
-    alternate: currentRoot
+  let currentFiber = wipFiber
+
+  return () => {
+    wipRoot = {
+      ...currentFiber,
+      alternate: currentFiber
+    }
+
+    nextWorkOfUnit = wipRoot
   }
 
-  nextWorkOfUnit = wipRoot
 }
 const React = {
   render,
