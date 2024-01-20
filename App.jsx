@@ -2,6 +2,9 @@ import React from './core/React.js'
 
 function Counter() {
   const [count, setCount] = React.useState(11)
+  React.useEffect(() => {
+    console.log('update')
+  }, [])
 
   function handleClick() {
     setCount((c) => c + 1)
