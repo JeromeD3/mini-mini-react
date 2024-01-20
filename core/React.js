@@ -202,8 +202,9 @@ function reconcileChildren(fiber, children) {
 }
 
 function updateFunctionComponent(fiber) {
-  wipFiber
-    = fiber
+  stateHooks = []
+  stateHookIndex = 0
+  wipFiber = fiber
   const children = [fiber.type(fiber.props)]
   // 3. 转换链表，建立关系，设置好指针
   reconcileChildren(fiber, children)
@@ -264,11 +265,48 @@ function update() {
 
     nextWorkOfUnit = wipRoot
   }
+}
 
+let stateHooks
+let stateHookIndex
+function useState(initial) {
+
+  let currentFiber = wipFiber
+  const oldHook = currentFiber.alternate?.stateHooks[stateHookIndex]
+  const stateHook = {
+    state: oldHook ? oldHook.state : initial,
+    queue: oldHook ? oldHook.queue : []
+  }
+  stateHook.queue.forEach(action => {
+    stateHook.state = action(stateHook.state)
+  })
+
+  stateHook.queue = []
+
+  stateHookIndex++
+  stateHooks.push(stateHook)
+  currentFiber.stateHooks = stateHooks
+  function setState(action) {
+    const eagerState = typeof action === 'function' ? action(stateHook.state) : action
+
+    if (eagerState === stateHook.state) {
+      return
+    }
+    stateHook.queue.push(typeof action === 'function' ? action : () => action)
+    wipRoot = {
+      ...currentFiber,
+      alternate: currentFiber
+    }
+
+    nextWorkOfUnit = wipRoot
+  }
+
+  return [stateHook.state, setState]
 }
 const React = {
   render,
   createElement,
-  update
+  update,
+  useState
 }
 export default React

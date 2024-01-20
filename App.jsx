@@ -1,32 +1,21 @@
 import React from './core/React.js'
 
-let state = 0
-let props = { id: '11111' }
-function Counter({ num }) {
+function Counter() {
+  const [count, setCount] = React.useState(11)
+
   function handleClick() {
-    state++
-    console.log('click', num)
-    props = {}
-    React.update()
+    setCount((c) => c + 1)
   }
   return (
-    <button onClick={handleClick} {...props}>
-      count:{state}
-      x2xx:{num}---{state}
-    </button>
-  )
-}
-function Counter2({ num }) {
-  return (
     <div>
-      <Counter num={num} />
-      <Counter num={num} />
+      {count}
+      <button onClick={handleClick}>showbar</button>
     </div>
   )
 }
 
 function App() {
-  return <Counter2 num={10} />
+  return <Counter />
 }
 
 // React.createElement("div", {
